@@ -1,4 +1,4 @@
-response_column = "site_eur"
+response_column = "site_eui"
 id_column = "id"  # probably not useful?
 year_columns = "year_factor"  # probably use as cross validation?
 all_feature_columns = [
