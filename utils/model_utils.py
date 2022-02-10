@@ -4,7 +4,9 @@ from sklearn.preprocessing import OneHotEncoder
 import pandas as pd
 
 
-def run_leave_year_out(model_df, sklearn_model, features_columns, if_scale_data):
+def run_leave_year_out(
+    model_df, sklearn_model, features_columns, if_scale_data, model_type="sklearn"
+):
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
     for one_year in all_year:
@@ -18,9 +20,10 @@ def run_leave_year_out(model_df, sklearn_model, features_columns, if_scale_data)
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
             left_out_train_x_df, left_out_test_x_df, if_scale_data
         )
-        train_predict, test_predict = run_model(
-            sklearn_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
-        )
+        if model_type == "sklearn":
+            train_predict, test_predict = run_sklearn_model(
+                sklearn_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
+            )
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
         test_rmse = calculate_rmse(left_out_test_y_df, test_predict)
         one_year_result_df = pd.DataFrame(
@@ -97,7 +100,7 @@ def get_one_hot_encoder(train_df):
     return enc.fit(train_df)
 
 
-def run_model(sklearn_model, train_x_df, train_y_df, test_x_df):
+def run_sklearn_model(sklearn_model, train_x_df, train_y_df, test_x_df):
     fitted_model = fit_sklearn_model(sklearn_model, train_x_df, train_y_df)
     train_predict = run_sklearn_predict(fitted_model, train_x_df)
     test_predict = run_sklearn_predict(fitted_model, test_x_df)
