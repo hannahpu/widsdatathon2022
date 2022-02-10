@@ -9,6 +9,7 @@ import pandas as pd
 
 def backfill_energy_star_rating(
         input_df:pd.DataFrame,
+        mapping_df: pd.DataFrame,
         groupby_list:List[str],
         energy_star_rating_colname: str = "energy_star_rating" ,
         agg_approach_func: callable = np.nanmean
@@ -22,6 +23,9 @@ def backfill_energy_star_rating(
     ----------
     input_df:pd.DataFrame
         The input dataframe with energy_star_rating_colname column
+    mapping_df:pd.DataFrame
+        The mapping_df used to backfill energy_star_rating, for both training
+        and test datasets, mapping_df = train_df.
     groupby_list:List[str]
         A list of combinations to aggregate, e.g.
         ['year_factor', 'state_factor', 'year_built']
@@ -36,7 +40,7 @@ def backfill_energy_star_rating(
     """
     # Get a mapping between energy star with a specific combination
     # of unique identifiers
-    mapping_energy_star_per_combo_df = input_df.groupby(groupby_list).agg(
+    mapping_energy_star_per_combo_df = mapping_df.groupby(groupby_list).agg(
         agg_approach_func
     ).reset_index()[groupby_list + [energy_star_rating_colname]].rename(
         columns={
@@ -66,6 +70,7 @@ def backfill_energy_star_rating(
 
 def backfill_wind_direction(
         input_df:pd.DataFrame,
+        mapping_df: pd.DataFrame,
         groupby_list:List[str],
         wind_direction_colname: str = "direction_max_wind_speed" ,
         agg_approach_func: callable = np.nanmean
@@ -79,6 +84,9 @@ def backfill_wind_direction(
     ----------
     input_df:pd.DataFrame
         The input dataframe with wind_direction_colname column
+    mapping_df:pd.DataFrame
+        The mapping_df used to backfill wind directions, for both training
+        and test datasets, mapping_df = train_df.
     groupby_list:List[str]
         A list of combinations to aggregate, e.g.
         ['year_factor', 'state_factor']
@@ -91,9 +99,9 @@ def backfill_wind_direction(
     pd.DataFrame with one additional column of f"backfilled_{wind_direction_colname}"
 
     """
-    # Get a mapping between energy star with a specific combination
+    # Get a mapping between wind directions with a specific combination
     # of unique identifiers
-    mapping_wind_direction_per_combo_df = input_df.groupby(groupby_list).agg(
+    mapping_wind_direction_per_combo_df = mapping_df.groupby(groupby_list).agg(
         agg_approach_func
     ).reset_index()[groupby_list + [wind_direction_colname]].rename(
         columns={
