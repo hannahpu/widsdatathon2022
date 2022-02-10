@@ -119,3 +119,11 @@ def run_sklearn_predict(model, test_x):
 
 def calculate_rmse(true_y, predict_y):
     return mean_squared_error(true_y, predict_y, squared=False)
+
+
+def run_catboost_model(model, train_x_df, train_y_df, test_x_df):
+    cat_columns = train_x_df.select_dtypes(['O']).columns.tolist()
+    model.fit(train_x_df, y=train_y_df, cat_features=cat_columns)
+    train_predict = model.predict(train_x_df)
+    test_predict = model.predict(test_x_df)
+    return train_predict, test_predict
