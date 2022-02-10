@@ -195,3 +195,13 @@ if __name__ == '__main__':
     # For training, use this approach increases valid direction_max_wind_speed
     # from 34674(46%) to 70224(93%)
     print(backfilled_wind_direction_df.filter(like="direction_max").info())
+
+
+    # Categorize wind speed directions
+    backfilled_wind_direction_df = backfilled_wind_direction_df.assign(
+        categorized_direction_max_wind_speed=lambda df: df['direction_max_wind_speed'].apply(
+            lambda a_direction_value: categorize_wind_direction(
+                wind_direction_degree=a_direction_value, n_bins_categorized=8)))
+
+    print(backfilled_wind_direction_df.filter(like="direction")[[
+        'direction_max_wind_speed', 'categorized_direction_max_wind_speed']].drop_duplicates())
