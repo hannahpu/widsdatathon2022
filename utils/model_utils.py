@@ -5,10 +5,15 @@ import pandas as pd
 
 
 def run_leave_year_out(
-    model_df, sklearn_model, features_columns, if_scale_data, model_type="sklearn"
+    model_df, ml_model, features_columns, if_scale_data, model_type="sklearn"
 ):
+    # Define which function to run
+    run_model_dict = {"sklearn": run_sklearn_model,
+                  "catboost": run_catboost_model}
+    assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
+    print(f"Running {model_type}")
     for one_year in all_year:
         print(f"Modeling {one_year}...")
         (
@@ -20,10 +25,9 @@ def run_leave_year_out(
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
             left_out_train_x_df, left_out_test_x_df, if_scale_data
         )
-        if model_type == "sklearn":
-            train_predict, test_predict = run_sklearn_model(
-                sklearn_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
-            )
+        train_predict, test_predict = run_model_dict[model_type](
+            ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
+        )
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
         test_rmse = calculate_rmse(left_out_test_y_df, test_predict)
         one_year_result_df = pd.DataFrame(
