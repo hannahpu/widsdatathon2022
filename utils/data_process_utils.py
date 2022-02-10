@@ -183,6 +183,7 @@ if __name__ == '__main__':
     # Backfill energy star rating
     backfilled_energy_star_train_df = backfill_energy_star_rating(
         input_df=train_df.query("year_built !=0"),
+        mapping_df=train_df.query("year_built !=0"),
         groupby_list=['year_factor', 'state_factor', 'year_built'],
         energy_star_rating_colname="energy_star_rating",
         agg_approach_func=np.nanmean
@@ -195,6 +196,7 @@ if __name__ == '__main__':
     # Backfill wind direction
     backfilled_wind_direction_df = backfill_wind_direction(
         input_df=backfilled_energy_star_train_df,
+        mapping_df=backfilled_energy_star_train_df,
         groupby_list=['year_factor', 'state_factor'],
         wind_direction_colname="direction_max_wind_speed",
         agg_approach_func=np.nanmean
