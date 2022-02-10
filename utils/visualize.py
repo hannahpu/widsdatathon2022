@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -56,3 +57,12 @@ def quick_visualize_raw_features(train_df: pd.DataFrame, figsize: tuple = (10, 6
         ax = sns.countplot(data=train_df, x=colname)
         _ = ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
     return
+
+
+def plot_catboost_feature_importance(model):
+    sorted_feature_importance = model.feature_importances_.argsort()
+    plt.figure(figsize=(10, 26))
+    plt.barh(np.array(model.feature_names_)[sorted_feature_importance], 
+            model.feature_importances_[sorted_feature_importance])
+    plt.xlabel("CatBoost Feature Importance")
+    return 
