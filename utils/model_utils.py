@@ -8,8 +8,7 @@ def run_leave_year_out(
     model_df, ml_model, features_columns, if_scale_data, if_one_hot, model_type="sklearn"
 ):
     # Define which function to run
-    run_model_dict = {"sklearn": run_sklearn_model,
-                  "catboost": run_catboost_model}
+    run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
     assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
