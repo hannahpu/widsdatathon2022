@@ -66,3 +66,16 @@ def plot_catboost_feature_importance(model):
             model.feature_importances_[sorted_feature_importance])
     plt.xlabel("CatBoost Feature Importance")
     return 
+
+
+def plot_rmse_by_group(rmse_df, rmse_col='rmse', group_col='facility_type', aux_col_list=['rating_frac']):
+    ncols = len(aux_col_list) + 1
+    fig, axes = plt.subplots(figsize=(10, 20), ncols=ncols)
+    sns.barplot(data=rmse_df.sort_values(rmse_col, ascending=False), 
+                y=group_col, x=rmse_col, ax=axes[0])
+    for i, aux_col in enumerate(aux_col_list):
+        sns.barplot(data=rmse_df.sort_values(rmse_col, ascending=False), 
+                    y=group_col, x=aux_col, ax=axes[i+1])
+        axes[i+1].set_yticklabels([])
+        axes[i+1].set_ylabel("")
+    return
