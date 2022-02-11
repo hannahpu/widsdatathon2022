@@ -4,12 +4,9 @@ from sklearn.preprocessing import OneHotEncoder
 import pandas as pd
 
 
-def run_leave_year_out(
-    model_df, ml_model, features_columns, if_scale_data, model_type="sklearn"
-):
+def run_leave_year_out(model_df, ml_model, features_columns, if_scale_data, model_type="sklearn"):
     # Define which function to run
-    run_model_dict = {"sklearn": run_sklearn_model,
-                  "catboost": run_catboost_model}
+    run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
     assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
@@ -23,7 +20,9 @@ def run_leave_year_out(
             left_out_train_y_df,
         ) = train_test_split(one_year, model_df, features_columns)
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
-            left_out_train_x_df, left_out_test_x_df, if_scale_data
+            left_out_train_x_df,
+            left_out_test_x_df,
+            if_scale_data,
         )
         train_predict, test_predict = run_model_dict[model_type](
             ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
