@@ -11,6 +11,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from .model_utils import scale_data
+from .data_process_utils import backfill_energy_star_rating, backfill_wind_direction
 
 
 def clean_impute_data(train_df, test_df, impute_col='year_built', impute_thresh=1800, factors_cols=['facility_type', 'state_factor']):
@@ -32,7 +33,7 @@ def impute_with_agg(base_df, agg_df, impute_col, factors_cols, impute_thresh):
         base_df.loc[base_df[impute_col]<impute_thresh, impute_col] = impute_thresh
     return base_df
 
-def process_data(train_df, test_df, cols_to_reduce, cols_to_log_transform, n_pca_components):
+def process_data(train_df, test_df, cols_to_reduce, cols_to_log_transform, n_pca_components, backfill_dict):
     # Standardize colnames
     train_df = standardize_colnames(train_df)
     test_df = standardize_colnames(test_df)
@@ -42,13 +43,30 @@ def process_data(train_df, test_df, cols_to_reduce, cols_to_log_transform, n_pca
         train_df = log_transform(train_df, cols_to_log_transform)
         test_df = log_transform(test_df, cols_to_log_transform)
 
-    # Make imputations
+    # Make imputations for year_built
     impute_dict = {"year_built": ['facility_type', 'state_factor']}
     thresh_dict = {"year_built": 1800}
     for impute_col, factors_cols in impute_dict.items():
         train_df, test_df = clean_impute_data(
             train_df, test_df, impute_col=impute_col, impute_thresh=thresh_dict[impute_col], factors_cols=factors_cols)
-        
+    if backfill_dict:
+        for col, groupby_list in backfill_dict.items():
+            # Backfill... Meng's func is generic
+            train_df = backfill_energy_star_rating(
+                input_df=train_df,
+                mapping_df=train_df,
+                groupby_list=groupby_list,
+                energy_star_rating_colname=col,
+                agg_approach_func=np.nanmedian
+            )
+            test_df = backfill_energy_star_rating(
+                input_df=test_df,
+                mapping_df=train_df,
+                groupby_list=groupby_list, 
+                energy_star_rating_colname=col,
+                agg_approach_func=np.nanmedian
+            )
+
     # PCA transformations to reduce dimensions
     if cols_to_reduce:
         train_df, test_df, pca_cols = reduce_dimensions(train_df, test_df, cols_to_reduce, n_components=n_pca_components)
