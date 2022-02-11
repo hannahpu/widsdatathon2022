@@ -5,7 +5,7 @@ import pandas as pd
 
 
 def run_leave_year_out(
-    model_df, ml_model, features_columns, if_scale_data, model_type="sklearn"
+    model_df, ml_model, features_columns, if_scale_data, if_one_hot, model_type="sklearn"
 ):
     # Define which function to run
     run_model_dict = {"sklearn": run_sklearn_model,
@@ -23,7 +23,7 @@ def run_leave_year_out(
             left_out_train_y_df,
         ) = train_test_split(one_year, model_df, features_columns)
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
-            left_out_train_x_df, left_out_test_x_df, if_scale_data
+            left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot
         )
         train_predict, test_predict = run_model_dict[model_type](
             ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
@@ -59,26 +59,27 @@ def split_model_feature_response(model_df, features_columns, if_with_response=Tr
         return model_x_df
 
 
-def process_train_test_data(train_x_df, test_x_df, if_scale_data):
-    categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
-    print(f"Columns to be dummied: {categorical_columns_to_dummy}")
-    for col in categorical_columns_to_dummy:
-        encoder = get_one_hot_encoder(train_x_df[[col]])
-        one_hot_encoded_column_name = [f"{col}_{ind}" for ind in range(train_x_df[col].nunique())]
-        train_one_hot_encoded = encoder.transform(train_x_df[[col]])
-        train_one_hot_encoded = pd.DataFrame(
-            train_one_hot_encoded, columns=one_hot_encoded_column_name, index=train_x_df.index
-        )
-        test_one_hot_encoded = encoder.transform(test_x_df[[col]])
-        test_one_hot_encoded = pd.DataFrame(
-            test_one_hot_encoded,
-            columns=one_hot_encoded_column_name,
-            index=test_x_df.index,
-        )
-        train_x_df = pd.concat([train_x_df, train_one_hot_encoded], axis="columns")
-        test_x_df = pd.concat([test_x_df, test_one_hot_encoded], axis="columns")
-    train_x_df = train_x_df.drop(columns=categorical_columns_to_dummy)
-    test_x_df = test_x_df.drop(columns=categorical_columns_to_dummy)
+def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot):
+    if if_one_hot:
+        categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
+        print(f"Columns to be dummied: {categorical_columns_to_dummy}")
+        for col in categorical_columns_to_dummy:
+            encoder = get_one_hot_encoder(train_x_df[[col]])
+            one_hot_encoded_column_name = [f"{col}_{ind}" for ind in range(train_x_df[col].nunique())]
+            train_one_hot_encoded = encoder.transform(train_x_df[[col]])
+            train_one_hot_encoded = pd.DataFrame(
+                train_one_hot_encoded, columns=one_hot_encoded_column_name, index=train_x_df.index
+            )
+            test_one_hot_encoded = encoder.transform(test_x_df[[col]])
+            test_one_hot_encoded = pd.DataFrame(
+                test_one_hot_encoded,
+                columns=one_hot_encoded_column_name,
+                index=test_x_df.index,
+            )
+            train_x_df = pd.concat([train_x_df, train_one_hot_encoded], axis="columns")
+            test_x_df = pd.concat([test_x_df, test_one_hot_encoded], axis="columns")
+        train_x_df = train_x_df.drop(columns=categorical_columns_to_dummy)
+        test_x_df = test_x_df.drop(columns=categorical_columns_to_dummy)
     if if_scale_data:
         train_x_df, test_x_df = scale_data(train_x_df, test_x_df)
     return train_x_df, test_x_df
