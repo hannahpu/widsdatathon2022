@@ -55,7 +55,9 @@ display(random_forest_rmse)
 train_filter_x_df, train_filter_y_df = mu.split_model_feature_response(
     train_filter_df, features_columns
 )
-test_x_df = mu.split_model_feature_response(test_df, features_columns, if_with_response=False)
+test_x_df = mu.split_model_feature_response(
+    test_df, features_columns, if_with_response=False
+)
 processed_train_x_df, processed_test_x_df = mu.process_train_test_data(
     train_filter_x_df, test_x_df, if_scale
 )

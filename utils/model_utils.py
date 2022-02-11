@@ -5,11 +5,18 @@ import pandas as pd
 
 
 def run_leave_year_out(
-    model_df, ml_model, features_columns, if_scale_data, if_one_hot, model_type="sklearn"
+    model_df,
+    ml_model,
+    features_columns,
+    if_scale_data,
+    if_one_hot,
+    model_type="sklearn",
 ):
     # Define which function to run
     run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
-    assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
+    assert (
+        model_type in run_model_dict.keys()
+    ), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
     print(f"Running {model_type}")
@@ -30,7 +37,12 @@ def run_leave_year_out(
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
         test_rmse = calculate_rmse(left_out_test_y_df, test_predict)
         one_year_result_df = pd.DataFrame(
-            {"left_out_year": one_year, "train_rmse": train_rmse, "test_rmse": test_rmse}, index=[0]
+            {
+                "left_out_year": one_year,
+                "train_rmse": train_rmse,
+                "test_rmse": test_rmse,
+            },
+            index=[0],
         )
         all_loy_model_result.append(one_year_result_df)
     all_loy_model_result_df = pd.concat(all_loy_model_result).reset_index(drop=True)
@@ -46,7 +58,12 @@ def train_test_split(level, model_df, features_columns):
     left_out_train_x_df, left_out_train_y_df = split_model_feature_response(
         left_out_train, features_columns
     )
-    return left_out_test_x_df, left_out_test_y_df, left_out_train_x_df, left_out_train_y_df
+    return (
+        left_out_test_x_df,
+        left_out_test_y_df,
+        left_out_train_x_df,
+        left_out_train_y_df,
+    )
 
 
 def split_model_feature_response(model_df, features_columns, if_with_response=True):
@@ -64,10 +81,14 @@ def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot):
         print(f"Columns to be dummied: {categorical_columns_to_dummy}")
         for col in categorical_columns_to_dummy:
             encoder = get_one_hot_encoder(train_x_df[[col]])
-            one_hot_encoded_column_name = [f"{col}_{ind}" for ind in range(train_x_df[col].nunique())]
+            one_hot_encoded_column_name = [
+                f"{col}_{ind}" for ind in range(train_x_df[col].nunique())
+            ]
             train_one_hot_encoded = encoder.transform(train_x_df[[col]])
             train_one_hot_encoded = pd.DataFrame(
-                train_one_hot_encoded, columns=one_hot_encoded_column_name, index=train_x_df.index
+                train_one_hot_encoded,
+                columns=one_hot_encoded_column_name,
+                index=train_x_df.index,
             )
             test_one_hot_encoded = encoder.transform(test_x_df[[col]])
             test_one_hot_encoded = pd.DataFrame(
@@ -96,8 +117,12 @@ def scale_data(train_x, test_x):
     scaler = scaler.fit(train_x)
     scaled_train_x = scaler.transform(train_x)
     scaled_test_x = scaler.transform(test_x)
-    scaled_train_x = pd.DataFrame(scaled_train_x, columns=train_x.columns, index=train_x.index)
-    scaled_test_x = pd.DataFrame(scaled_test_x, columns=test_x.columns, index=test_x.index)
+    scaled_train_x = pd.DataFrame(
+        scaled_train_x, columns=train_x.columns, index=train_x.index
+    )
+    scaled_test_x = pd.DataFrame(
+        scaled_test_x, columns=test_x.columns, index=test_x.index
+    )
     return scaled_train_x, scaled_test_x
 
 
