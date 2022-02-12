@@ -1,0 +1,26 @@
+## Feb 3, 2022
+Discuss project timeline.
+Plan: each get familiar with the data, do some eda, think about work task plans to start the project.
+Set up google colab, github repo to collaborate.
+
+## Feb 8, 2022
+Discuss findings we found in each our eda and model baseline train test rmse.
+Some findings from the eda:
+    1. Energy star rating is the most correlated feature. Also most predictive from a quick random forst model (no feature engineer and imputation done, no tuning done).
+    2. Use Year_factor to do leave_year_out
+    3. Some columns has missing, including energy star rating.
+    4. Train have heavy imbalanceness in state_8, which is not included in test data
+Plan:
+Hannah to push model utils to run leave_year_out
+Meng write function for energy star rating by grouping factors such as state, year built
+Diana write functions to process times series weather data features
+
+## Feb 11, 2022
+Discuss findings from our current model result.
+1. PCA of temperature features shows to be most predictive, adding precipitation in PCA didn't seem to have additional improvement.
+2. Using state/year imputation shows to include more noise than how Catboost model is treating missing value (minimum value).
+3. Most performance improved from ~62 to ~32 (from very base feature model to feature engineered model).
+Plan:
+1. Develop model to predict missing value for energy star rating (eg. random forest, LDA)
+2. Write up function to upsample/downsample the dataset (eg. by state_factor)
+3. After finish feature engineer tasks, we can consider to try out more complex models such as neural network since the number of data is large.
