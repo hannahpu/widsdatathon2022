@@ -14,9 +14,7 @@ def run_leave_year_out(
 ):
     # Define which function to run
     run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
-    assert (
-        model_type in run_model_dict.keys()
-    ), f"{model_type} not in {run_model_dict.keys()}"
+    assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
     print(f"Running {model_type}")
@@ -29,9 +27,9 @@ def run_leave_year_out(
             left_out_train_y_df,
         ) = train_test_split(one_year, model_df, features_columns)
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
-            left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot
+            left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df
         )
-        train_predict, test_predict = run_model_dict[model_type](
+        train_predict, test_predict, fitted_model = run_model_dict[model_type](
             ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
         )
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
@@ -75,14 +73,15 @@ def split_model_feature_response(model_df, features_columns, if_with_response=Tr
         return model_x_df
 
 
-def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot):
+def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot, full_data_df):
     if if_one_hot:
         categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
         print(f"Columns to be dummied: {categorical_columns_to_dummy}")
         for col in categorical_columns_to_dummy:
-            encoder = get_one_hot_encoder(train_x_df[[col]])
+            # encoder = get_one_hot_encoder(train_x_df[[col]])
+            encoder = get_one_hot_encoder(full_data_df[[col]])
             one_hot_encoded_column_name = [
-                f"{col}_{ind}" for ind in range(train_x_df[col].nunique())
+                f"{col}_{ind}" for ind in range(full_data_df[col].nunique())
             ]
             train_one_hot_encoded = encoder.transform(train_x_df[[col]])
             train_one_hot_encoded = pd.DataFrame(
@@ -117,12 +116,8 @@ def scale_data(train_x, test_x):
     scaler = scaler.fit(train_x)
     scaled_train_x = scaler.transform(train_x)
     scaled_test_x = scaler.transform(test_x)
-    scaled_train_x = pd.DataFrame(
-        scaled_train_x, columns=train_x.columns, index=train_x.index
-    )
-    scaled_test_x = pd.DataFrame(
-        scaled_test_x, columns=test_x.columns, index=test_x.index
-    )
+    scaled_train_x = pd.DataFrame(scaled_train_x, columns=train_x.columns, index=train_x.index)
+    scaled_test_x = pd.DataFrame(scaled_test_x, columns=test_x.columns, index=test_x.index)
     return scaled_train_x, scaled_test_x
 
 
@@ -135,7 +130,7 @@ def run_sklearn_model(sklearn_model, train_x_df, train_y_df, test_x_df):
     fitted_model = fit_sklearn_model(sklearn_model, train_x_df, train_y_df)
     train_predict = run_sklearn_predict(fitted_model, train_x_df)
     test_predict = run_sklearn_predict(fitted_model, test_x_df)
-    return train_predict, test_predict
+    return train_predict, test_predict, fitted_model
 
 
 def fit_sklearn_model(model, train_x, train_y):
