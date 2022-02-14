@@ -2,6 +2,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
 import pandas as pd
+import numpy as np
 
 
 def run_leave_year_out(
@@ -11,12 +12,16 @@ def run_leave_year_out(
     if_scale_data,
     if_one_hot,
     model_type="sklearn",
+    response_col="site_eui",
+    if_output_prediction_results=False,
 ):
     # Define which function to run
     run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
     assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
+    prediction_result_train_dict = {}
+    prediction_result_test_dict = {}
     print(f"Running {model_type}")
     for one_year in all_year:
         print(f"Modeling {one_year}...")
@@ -25,7 +30,7 @@ def run_leave_year_out(
             left_out_test_y_df,
             left_out_train_x_df,
             left_out_train_y_df,
-        ) = train_test_split(one_year, model_df, features_columns)
+        ) = train_test_split(one_year, model_df, features_columns, response_col)
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
             left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df
         )
@@ -43,18 +48,23 @@ def run_leave_year_out(
             index=[0],
         )
         all_loy_model_result.append(one_year_result_df)
+        prediction_result_train_dict[one_year] = train_predict
+        prediction_result_test_dict[one_year] = test_predict
     all_loy_model_result_df = pd.concat(all_loy_model_result).reset_index(drop=True)
-    return all_loy_model_result_df
+    if if_output_prediction_results:
+        return all_loy_model_result_df, prediction_result_train_dict, prediction_result_test_dict
+    else:
+        return all_loy_model_result_df
 
 
-def train_test_split(level, model_df, features_columns):
+def train_test_split(level, model_df, features_columns, response_col="site_eui"):
     left_out_test = model_df.query(f"year_factor == {level}")
     left_out_train = model_df.query(f"year_factor != {level}")
     left_out_test_x_df, left_out_test_y_df = split_model_feature_response(
-        left_out_test, features_columns
+        left_out_test, features_columns, response_col=response_col
     )
     left_out_train_x_df, left_out_train_y_df = split_model_feature_response(
-        left_out_train, features_columns
+        left_out_train, features_columns, response_col=response_col
     )
     return (
         left_out_test_x_df,
@@ -64,10 +74,12 @@ def train_test_split(level, model_df, features_columns):
     )
 
 
-def split_model_feature_response(model_df, features_columns, if_with_response=True):
+def split_model_feature_response(
+    model_df, features_columns, if_with_response=True, response_col="site_eui"
+):
     model_x_df = model_df[features_columns]
     if if_with_response:
-        model_y_df = model_df["site_eui"]
+        model_y_df = model_df[response_col]
         return model_x_df, model_y_df
     else:
         return model_x_df
@@ -153,3 +165,59 @@ def run_catboost_model(model, train_x_df, train_y_df, test_x_df):
     train_predict = model.predict(train_x_df)
     test_predict = model.predict(test_x_df)
     return train_predict, test_predict
+
+
+def run_model_predict_unknown_test_by_column(
+    train_df, test_df, full_data_df, features_columns, response_col, if_scale, if_one_hot, model
+):
+    all_year_factor = train_df["year_factor"].unique()
+    test_prediction_result = []
+    for one_year in all_year_factor:
+        print(f"Modeling {one_year}...")
+        train_filter_df = train_df.query(f"year_factor != {one_year}")
+        test_filter_df = test_df.query(f"year_factor == {one_year}")
+        train_filter_x_df, train_filter_y_df = split_model_feature_response(
+            train_filter_df, features_columns, if_with_response=True, response_col=response_col
+        )
+        test_filter_x_df = split_model_feature_response(
+            test_filter_df, features_columns, if_with_response=False
+        )
+        processed_train_x_df, processed_test_x_df = process_train_test_data(
+            train_filter_x_df, test_filter_x_df, if_scale, if_one_hot, full_data_df
+        )
+        train_predict, test_predict, fitted_model = run_sklearn_model(
+            model, processed_train_x_df, train_filter_y_df, processed_test_x_df
+        )
+        test_predict_df = test_filter_df[["id"]]
+        test_predict_df.loc[:, f"predict_{response_col}"] = test_predict
+        test_predict_df.loc[:, "year_factor"] = one_year
+        test_prediction_result.append(test_predict_df)
+        training_rmse = calculate_rmse(train_filter_y_df, train_predict)
+        num_unique_test_predict = len(np.unique(test_predict))
+        print(
+            f"{one_year} train rmse: {training_rmse}, num unique test prediction: {num_unique_test_predict}"
+        )
+    all_test_prediction_result = pd.concat(test_prediction_result)
+    return all_test_prediction_result
+
+
+def process_loy_train_test_prediction(
+    loy_prediction_result_train_dict, loy_prediction_result_test_dict, model_df
+):
+    all_year_factor = list(loy_prediction_result_train_dict.keys())
+    all_loy_train_predict = []
+    all_loy_test_predict = []
+    for one_year in all_year_factor:
+        left_year_train_df = model_df.query(f"year_factor != {one_year}")[["id"]]
+        left_year_test_df = model_df.query(f"year_factor == {one_year}")[["id"]]
+        one_left_year_train_df = loy_prediction_result_train_dict[one_year]
+        one_left_year_test_df = loy_prediction_result_test_dict[one_year]
+        left_year_train_df["train_prediction"] = one_left_year_train_df
+        left_year_train_df["left_year"] = one_year
+        left_year_test_df["test_prediction"] = one_left_year_test_df
+        left_year_test_df["left_year"] = one_year
+        all_loy_train_predict.append(left_year_train_df)
+        all_loy_test_predict.append(left_year_test_df)
+    all_loy_train_predict_df = pd.concat(all_loy_train_predict)
+    all_loy_test_predict_df = pd.concat(all_loy_test_predict)
+    return all_loy_train_predict_df, all_loy_test_predict_df
