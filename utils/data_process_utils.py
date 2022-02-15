@@ -236,6 +236,13 @@ if __name__ == '__main__':
     print(backfilled_wind_direction_df.filter(like="direction")[[
         'direction_max_wind_speed', 'categorized_direction_max_wind_speed']].drop_duplicates())
 
+    save_impute_file = False
+    if save_impute_file:
+        backfilled_energy_star_train_subset_df = backfilled_energy_star_train_df[
+            ["id", "energy_star_rating", "backfilled_energy_star_rating"]]
+        backfilled_energy_star_train_subset_df.to_csv(f"../feature_impute_data/energy_star_rating_backfilled.csv",
+                                                      index=False)
+
     # Get a mapping between facility type with parsed
     train_w_parsed_facility_type_df = parse_facility_type(
         input_df=backfilled_wind_direction_df,
