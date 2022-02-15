@@ -172,6 +172,26 @@ def categorize_wind_direction(wind_direction_degree:float,
             raise ValueError(f"wind direction degree must between 0 to 360")
 
 
+def parse_facility_type(input_df, facility_type_colname="facility_type"):
+    """
+
+    Parse facility type into main categories
+
+    Returns
+    -------
+    input_df with an additional column "facility_type_parsed"
+
+    """
+    # Get a mapping between facility type with parsed
+    input_df["facility_type_parsed"] = input_df[facility_type_colname].apply(
+        lambda a_facility_type: a_facility_type.split("_")[0] if (
+            "2to4" not in a_facility_type and "5plus" not in a_facility_type) else
+        a_facility_type.split("_")[-2] + "_" + a_facility_type.split("_")[-1]
+
+    )
+
+    return input_df
+
 # Sample code of using the functions
 if __name__ == '__main__':
 
@@ -219,7 +239,18 @@ if __name__ == '__main__':
         'direction_max_wind_speed', 'categorized_direction_max_wind_speed']].drop_duplicates())
 
     save_impute_file = False
+    
     if save_impute_file:
-        backfilled_energy_star_train_subset_df = backfilled_energy_star_train_df[["id", "energy_star_rating", "backfilled_energy_star_rating"]]
-        backfilled_energy_star_train_subset_df.to_csv(f"../feature_impute_data/energy_star_rating_backfilled.csv", index=False)
+        backfilled_energy_star_train_subset_df = backfilled_energy_star_train_df[
+            ["id", "energy_star_rating", "backfilled_energy_star_rating"]]
+        backfilled_energy_star_train_subset_df.to_csv(f"../feature_impute_data/energy_star_rating_backfilled.csv",
+                                                      index=False)
 
+    # Get a mapping between facility type with parsed
+    train_w_parsed_facility_type_df = parse_facility_type(
+        input_df=backfilled_wind_direction_df,
+        facility_type_colname="facility_type")
+
+    # Reduced to around 20 facility_types
+    print(train_w_parsed_facility_type_df[[
+        "facility_type_parsed", "facility_type"]].drop_duplicates())
