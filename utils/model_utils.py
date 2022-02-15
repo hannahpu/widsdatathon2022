@@ -164,7 +164,7 @@ def run_catboost_model(model, train_x_df, train_y_df, test_x_df):
     model.fit(train_x_df, y=train_y_df, cat_features=cat_columns)
     train_predict = model.predict(train_x_df)
     test_predict = model.predict(test_x_df)
-    return train_predict, test_predict
+    return train_predict, test_predict, fitted_model
 
 
 def run_model_predict_unknown_test_by_column(
