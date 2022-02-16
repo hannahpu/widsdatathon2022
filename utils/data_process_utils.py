@@ -3,6 +3,7 @@ data_process_utils.py
 """
 import sys
 from typing import List
+from xml.etree.ElementTree import TreeBuilder
 
 import numpy as np
 import pandas as pd
@@ -132,49 +133,70 @@ def backfill_wind_direction(
 def categorize_wind_direction(wind_direction_degree:float,
                               n_bins_categorized:int=8
                               ) -> str:
-  """
-  Categorize wind direction from 0-360 into 4, 8 or 16 directions
+    """
+    Categorize wind direction from 0-360 into 4, 8 or 16 directions
 
-  Parameters
-  ----------
-  wind_direction_degree:float
+    Parameters
+    ----------
+    wind_direction_degree:float
     The wind direction degree between 0 to 360, if it is np.nan then function
     returns np.nan
-  n_bins_categorized:int=8
+    n_bins_categorized:int=8
     The number of directions categorized. Default at 8.
-  Returns
-  -------
-  str, one of the directions in directions_list
-  """
-  # List out directions based on different n_bins_categorized
-  if n_bins_categorized == 16:
-    directions_list=["N","NNE","NE","ENE","E","ESE", "SE", "SSE",
-                     "S","SSW","SW","WSW","W","WNW", "NW","NNW"]
-  elif n_bins_categorized == 8:
-    directions_list=["N","NE","E","SE",
-                     "S","SW","W","NW"]
-  elif n_bins_categorized == 4:
-    directions_list=["N","E", "S","W"]
-  else:
-    raise ValueError("The n_bins_categorized can only be one of 4, 8 or 16.")
-
-  if np.isnan(wind_direction_degree):
-    return np.nan
-  else:
-    if 0 <= wind_direction_degree <= 360:
-      # Get the degree delta for each bin
-      deg_in_each_bin = float(360/n_bins_categorized)
-      # +0.5 so that it can be in only one direction bin
-      bins_index = int((wind_direction_degree/deg_in_each_bin)+ 0.5)
-      return directions_list[(bins_index % n_bins_categorized)]
+    Returns
+    -------
+    str, one of the directions in directions_list
+    """
+    # List out directions based on different n_bins_categorized
+    if n_bins_categorized == 16:
+        directions_list=["N","NNE","NE","ENE","E","ESE", "SE", "SSE",
+                            "S","SSW","SW","WSW","W","WNW", "NW","NNW"]
+    elif n_bins_categorized == 8:
+        directions_list=["N","NE","E","SE",
+                            "S","SW","W","NW"]
+    elif n_bins_categorized == 4:
+        directions_list=["N","E", "S","W"]
     else:
-      raise ValueError(f"wind direction degree must between 0 to 360")
+        raise ValueError("The n_bins_categorized can only be one of 4, 8 or 16.")
 
+    if np.isnan(wind_direction_degree):
+        return np.nan
+    else:
+        if 0 <= wind_direction_degree <= 360:
+            # Get the degree delta for each bin
+            deg_in_each_bin = float(360/n_bins_categorized)
+            # +0.5 so that it can be in only one direction bin
+            bins_index = int((wind_direction_degree/deg_in_each_bin)+ 0.5)
+            return directions_list[(bins_index % n_bins_categorized)]
+        else:
+            raise ValueError(f"wind direction degree must between 0 to 360")
+
+
+def parse_facility_type(input_df, facility_type_colname="facility_type"):
+    """
+
+    Parse facility type into main categories
+
+    Returns
+    -------
+    input_df with an additional column "facility_type_parsed"
+
+    """
+    # Get a mapping between facility type with parsed
+    input_df["facility_type_parsed"] = input_df[facility_type_colname].apply(
+        lambda a_facility_type: a_facility_type.split("_")[0] if (
+            "2to4" not in a_facility_type and "5plus" not in a_facility_type) else
+        a_facility_type.split("_")[-2] + "_" + a_facility_type.split("_")[-1]
+
+    )
+
+    return input_df
 
 # Sample code of using the functions
 if __name__ == '__main__':
 
-    wids_path = "/content/widsdatathon2022"
+    # wids_path = "/content/widsdatathon2022"
+    wids_path = ".."
     sys.path.append(wids_path)
 
     train_df = pd.read_csv(f"{wids_path}/data/train.csv")
@@ -215,3 +237,20 @@ if __name__ == '__main__':
 
     print(backfilled_wind_direction_df.filter(like="direction")[[
         'direction_max_wind_speed', 'categorized_direction_max_wind_speed']].drop_duplicates())
+
+    save_impute_file = False
+    
+    if save_impute_file:
+        backfilled_energy_star_train_subset_df = backfilled_energy_star_train_df[
+            ["id", "energy_star_rating", "backfilled_energy_star_rating"]]
+        backfilled_energy_star_train_subset_df.to_csv(f"../feature_impute_data/energy_star_rating_backfilled.csv",
+                                                      index=False)
+
+    # Get a mapping between facility type with parsed
+    train_w_parsed_facility_type_df = parse_facility_type(
+        input_df=backfilled_wind_direction_df,
+        facility_type_colname="facility_type")
+
+    # Reduced to around 20 facility_types
+    print(train_w_parsed_facility_type_df[[
+        "facility_type_parsed", "facility_type"]].drop_duplicates())
