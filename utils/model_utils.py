@@ -88,7 +88,7 @@ def split_model_feature_response(
 def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot, full_data_df):
     if if_one_hot:
         categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
-        print(f"Columns to be dummied: {categorical_columns_to_dummy}")
+        # print(f"Columns to be dummied: {categorical_columns_to_dummy}")
         for col in categorical_columns_to_dummy:
             # encoder = get_one_hot_encoder(train_x_df[[col]])
             encoder = get_one_hot_encoder(full_data_df[[col]])
