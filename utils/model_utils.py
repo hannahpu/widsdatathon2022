@@ -1,6 +1,9 @@
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import SMOTENC
 import pandas as pd
 import numpy as np
 
@@ -14,6 +17,7 @@ def run_leave_year_out(
     model_type="sklearn",
     response_col="site_eui",
     if_output_prediction_results=False,
+    resample_param_dict={},
 ):
     # Define which function to run
     run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
@@ -31,6 +35,26 @@ def run_leave_year_out(
             left_out_train_x_df,
             left_out_train_y_df,
         ) = train_test_split(one_year, model_df, features_columns, response_col)
+        if len(resample_param_dict) > 0:
+            train_for_resample_df = left_out_train_x_df
+            train_for_resample_df[response_col] = left_out_train_y_df
+            up_or_downsample = resample_param_dict["up_or_downsample"]
+            resample_by_col = resample_param_dict["resample_by_col"]
+            resample_type = resample_param_dict["resample_type"]
+            if up_or_downsample == "upsample":
+                train_after_resampled_df = upsampling_by_column(
+                    train_for_resample_df, resample_by_col, resample_type=resample_type
+                )
+            elif up_or_downsample == "downsample":
+                train_after_resampled_df = downsampling_by_column(
+                    train_for_resample_df, resample_by_col, resample_type=resample_type
+                )
+            left_out_train_x_df, left_out_train_y_df = split_model_feature_response(
+                train_after_resampled_df,
+                features_columns,
+                if_with_response=True,
+                response_col=response_col,
+            )
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
             left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df
         )
@@ -165,6 +189,46 @@ def run_catboost_model(model, train_x_df, train_y_df, test_x_df):
     train_predict = model.predict(train_x_df)
     test_predict = model.predict(test_x_df)
     return train_predict, test_predict, model
+
+
+def upsampling_by_column(train_df, resample_by_col, resample_type="random"):
+    if resample_type == "random":
+        train_x_to_resample = train_df.drop(columns=resample_by_col)
+        train_y_to_resample = train_df[resample_by_col]
+        oversampler = RandomOverSampler(random_state=42)
+        train_x_resampled, train_y_resampled = oversampler.fit_resample(
+            train_x_to_resample, train_y_to_resample
+        )
+    elif resample_type == "smote":
+        train_dropna_df = train_df.dropna(how="any")
+        train_x_to_resample = train_dropna_df.drop(columns=resample_by_col)
+        train_y_to_resample = train_dropna_df[resample_by_col]
+        non_numeric_columns = output_non_numeric_columns(train_x_to_resample)
+        categorical_column_index = [
+            train_x_to_resample.columns.get_loc(c)
+            for c in non_numeric_columns
+            if c in train_x_to_resample
+        ]
+        sm = SMOTENC(random_state=42, categorical_features=categorical_column_index)
+        train_x_resampled, train_y_resampled = sm.fit_resample(
+            train_x_to_resample, train_y_to_resample
+        )
+    final_resampled_train_df = train_x_resampled
+    final_resampled_train_df[resample_by_col] = train_y_resampled
+    return final_resampled_train_df
+
+
+def downsampling_by_column(train_df, resample_by_col, resample_type="random"):
+    train_x_to_resample = train_df.drop(columns=resample_by_col)
+    train_y_to_resample = train_df[resample_by_col]
+    if resample_type == "random":
+        undersampler = RandomUnderSampler(random_state=42, sampling_strategy="majority")
+        train_x_resampled, train_y_resampled = undersampler.fit_resample(
+            train_x_to_resample, train_y_to_resample
+        )
+    final_resampled_train_df = train_x_resampled
+    final_resampled_train_df[resample_by_col] = train_y_resampled
+    return final_resampled_train_df
 
 
 def run_model_predict_unknown_test_by_column(
