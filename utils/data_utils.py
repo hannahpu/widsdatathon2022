@@ -22,13 +22,9 @@ def clean_impute_data(
     factors_cols=["facility_type", "state_factor"],
 ):
     agg_df = (
-        train_df.groupby(factors_cols)[impute_col]
-        .median()
-        .reset_index(name=f"median_{impute_col}")
+        train_df.groupby(factors_cols)[impute_col].median().reset_index(name=f"median_{impute_col}")
     )
-    train_df = impute_with_agg(
-        train_df, agg_df, impute_col, factors_cols, impute_thresh
-    )
+    train_df = impute_with_agg(train_df, agg_df, impute_col, factors_cols, impute_thresh)
     test_df = impute_with_agg(test_df, agg_df, impute_col, factors_cols, impute_thresh)
     return train_df, test_df
 
@@ -37,14 +33,60 @@ def impute_with_agg(base_df, agg_df, impute_col, factors_cols, impute_thresh):
     # First, impute any 0, negative, or missing values
     replace_df = base_df.merge(agg_df, on=factors_cols, how="left")
     bad_entries = (base_df[impute_col] <= 0) | (base_df[impute_col].isna())
-    base_df.loc[bad_entries, impute_col] = replace_df.loc[
-        bad_entries, f"median_{impute_col}"
-    ]
+    base_df.loc[bad_entries, impute_col] = replace_df.loc[bad_entries, f"median_{impute_col}"]
 
     # Set values lower than threshold to threshold
     if impute_thresh:
         base_df.loc[base_df[impute_col] < impute_thresh, impute_col] = impute_thresh
     return base_df
+
+
+def process_data_v1(
+    train_df,
+    test_df,
+    reduce_col_dict,
+    cols_to_log_transform,
+    reduce_number_dict,
+):
+    # Standardize colnames
+    train_df = standardize_colnames(train_df)
+    test_df = standardize_colnames(test_df)
+
+    # Make log transformations
+    if cols_to_log_transform:
+        train_df = log_transform(train_df, cols_to_log_transform)
+        test_df = log_transform(test_df, cols_to_log_transform)
+
+    # Make imputations for year_built
+    impute_dict = {"year_built": ["facility_type", "state_factor"]}
+    thresh_dict = {"year_built": 1800}
+    for impute_col, factors_cols in impute_dict.items():
+        train_df, test_df = clean_impute_data(
+            train_df,
+            test_df,
+            impute_col=impute_col,
+            impute_thresh=thresh_dict[impute_col],
+            factors_cols=factors_cols,
+        )
+
+    # PCA transformations to reduce dimensions
+    if len(reduce_col_dict) > 0:
+        all_pca_cols = []
+        all_reduce_keys = list(reduce_col_dict.keys())
+        for one_reduce_type in all_reduce_keys:
+            cols_to_reduce = reduce_col_dict[one_reduce_type]
+            n_pca_components = reduce_number_dict[one_reduce_type]
+            train_df, test_df, pca_cols = reduce_dimensions(
+                train_df,
+                test_df,
+                cols_to_reduce,
+                prefix=one_reduce_type,
+                n_components=n_pca_components,
+            )
+            all_pca_cols = all_pca_cols + pca_cols
+    else:
+        all_pca_cols = []
+    return train_df, test_df, all_pca_cols
 
 
 def process_data(
@@ -108,9 +150,7 @@ def log_transform(df, cols_to_transform, log_type="log10"):
     for col in cols_to_transform:
         df[col] = log_func[log_type](df[col] + 1)
     df = df.rename(
-        columns=dict(
-            zip(cols_to_transform, [f"{log_type}_{col}" for col in cols_to_transform])
-        )
+        columns=dict(zip(cols_to_transform, [f"{log_type}_{col}" for col in cols_to_transform]))
     )
     return df
 
@@ -120,9 +160,7 @@ def invert_log_transform(df, cols_to_invert, log_type="log10"):
     for col in cols_to_invert:
         df[col] = log_func[log_type](df[col]) - 1
     df = df.rename(
-        columns=dict(
-            zip(cols_to_invert, [col.replace(log_type, "") for col in cols_to_invert])
-        )
+        columns=dict(zip(cols_to_invert, [col.replace(log_type, "") for col in cols_to_invert]))
     )
     return df
 
@@ -132,9 +170,7 @@ def standardize_colnames(df):
     return df
 
 
-def reduce_dimensions(
-    train_x_df, test_x_df, cols_to_reduce, prefix="temp", n_components=9
-):
+def reduce_dimensions(train_x_df, test_x_df, cols_to_reduce, prefix="temp", n_components=9):
     if not cols_to_reduce:
         cols_to_reduce = list(train_x_df.columns)
 
@@ -150,12 +186,8 @@ def reduce_dimensions(
     pca_train_x_df = pd.DataFrame(train_x_pca, columns=pca_cols)
     pca_test_x_df = pd.DataFrame(test_x_pca, columns=pca_cols)
 
-    train_x_df = pd.concat(
-        [train_x_df.drop(columns=cols_to_reduce), pca_train_x_df], axis=1
-    )
-    test_x_df = pd.concat(
-        [test_x_df.drop(columns=cols_to_reduce), pca_test_x_df], axis=1
-    )
+    train_x_df = pd.concat([train_x_df.drop(columns=cols_to_reduce), pca_train_x_df], axis=1)
+    test_x_df = pd.concat([test_x_df.drop(columns=cols_to_reduce), pca_test_x_df], axis=1)
 
     return train_x_df, test_x_df, pca_cols
 

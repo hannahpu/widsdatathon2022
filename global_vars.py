@@ -1,6 +1,20 @@
 response_column = "site_eui"
 id_column = "id"  # probably not useful?
 year_columns = "year_factor"  # probably use as cross validation?
+
+below_temp_col_list = [
+    "days_below_30f",
+    "days_below_20f",
+    "days_below_10f",
+    "days_below_0f",
+    "days_above_80f",
+    "days_above_90f",
+    "days_above_100f",
+    "days_above_110f",
+]
+
+heat_cool_col_list = ["cooling_degree_days", "heating_degree_days"]
+
 all_feature_columns = [
     "state_factor",  # not all state factor are in the test_df
     "building_class",
