@@ -20,7 +20,11 @@ def run_leave_year_out(
     resample_param_dict={},
 ):
     # Define which function to run
-    run_model_dict = {"sklearn": run_sklearn_model, "catboost": run_catboost_model}
+    run_model_dict = {
+        "sklearn": run_sklearn_model,
+        "catboost": run_catboost_model,
+        "lightgbm": run_lgb_model,
+    }
     assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
@@ -164,6 +168,26 @@ def get_one_hot_encoder(train_df):
 
 def run_sklearn_model(sklearn_model, train_x_df, train_y_df, test_x_df):
     fitted_model = fit_sklearn_model(sklearn_model, train_x_df, train_y_df)
+    train_predict = run_sklearn_predict(fitted_model, train_x_df)
+    test_predict = run_sklearn_predict(fitted_model, test_x_df)
+    return train_predict, test_predict, fitted_model
+
+
+def fit_lgb_model(model, train_x, train_y):
+    # fit_params = {
+    #     "early_stopping_rounds": 100,
+    #     "eval_metric": "rmse",
+    #     # "eval_set": [(X_eval, y_eval)],
+    #     "eval_names": ["valid"],
+    #     "verbose": 1000,
+    # }
+    # model.fit(train_x, train_y, **fit_params)
+    model.fit(train_x, train_y)
+    return model
+
+
+def run_lgb_model(lgb_model, train_x_df, train_y_df, test_x_df):
+    fitted_model = fit_lgb_model(lgb_model, train_x_df, train_y_df)
     train_predict = run_sklearn_predict(fitted_model, train_x_df)
     test_predict = run_sklearn_predict(fitted_model, test_x_df)
     return train_predict, test_predict, fitted_model
