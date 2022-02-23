@@ -53,6 +53,10 @@ def run_leave_year_out(
                 train_after_resampled_df = downsampling_by_column(
                     train_for_resample_df, resample_by_col, resample_type=resample_type
                 )
+            elif up_or_downsample == "custom_upsample":
+                print("getting custom upsample")
+                df_to_get_weights = model_df.query(f"year_factor != {one_year}")
+                train_after_resampled_df = custom_weighted_upsample(train_for_resample_df, df_to_get_weights, resample_by_col)
             left_out_train_x_df, left_out_train_y_df = split_model_feature_response(
                 train_after_resampled_df,
                 features_columns,
@@ -240,6 +244,30 @@ def upsampling_by_column(train_df, resample_by_col, resample_type="random"):
     final_resampled_train_df = train_x_resampled
     final_resampled_train_df[resample_by_col] = train_y_resampled
     return final_resampled_train_df
+
+
+def custom_weighted_upsample(df_to_resample, df_to_get_weights, resample_by_col):
+    # get the levels that needs upsampled and the needed sample number
+    column_level_counts = df_to_resample[resample_by_col].value_counts()
+    final_sampled_number = column_level_counts.max()
+    column_level_to_resample = column_level_counts[column_level_counts != final_sampled_number]
+    column_level_number_to_resample = final_sampled_number - column_level_to_resample
+    # upsample per level
+    all_resampled_list = []
+    for level, number in column_level_number_to_resample.iteritems():
+        level_to_resample_from_df = df_to_resample.query(f"{resample_by_col} == '{level}'")
+        level_resample_weights = df_to_get_weights.query(f"{resample_by_col} == '{level}'")[
+            "resample_weights"
+        ].values
+        assert level_to_resample_from_df.shape[0] == len(level_resample_weights)
+        resampled_data = level_to_resample_from_df.sample(
+            n=number, replace=True, weights=level_resample_weights, random_state=None, axis=0
+        )
+        all_resampled_list.append(resampled_data)
+    # combine original data with upsampled data
+    all_resampled_df = pd.concat(all_resampled_list)
+    final_resampled_data = pd.concat([df_to_resample, all_resampled_df])
+    return final_resampled_data
 
 
 def downsampling_by_column(train_df, resample_by_col, resample_type="random"):
