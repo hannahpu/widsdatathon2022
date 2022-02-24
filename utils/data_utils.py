@@ -22,10 +22,13 @@ def clean_impute_data(
     factors_cols=["facility_type", "state_factor"],
 ):
     agg_df = (
-        train_df.groupby(factors_cols)[impute_col].median().reset_index(name=f"median_{impute_col}")
+        train_df.groupby(factors_cols)[impute_col].median(
+        ).reset_index(name=f"median_{impute_col}")
     )
-    train_df = impute_with_agg(train_df, agg_df, impute_col, factors_cols, impute_thresh)
-    test_df = impute_with_agg(test_df, agg_df, impute_col, factors_cols, impute_thresh)
+    train_df = impute_with_agg(
+        train_df, agg_df, impute_col, factors_cols, impute_thresh)
+    test_df = impute_with_agg(
+        test_df, agg_df, impute_col, factors_cols, impute_thresh)
     return train_df, test_df
 
 
@@ -33,11 +36,13 @@ def impute_with_agg(base_df, agg_df, impute_col, factors_cols, impute_thresh):
     # First, impute any 0, negative, or missing values
     replace_df = base_df.merge(agg_df, on=factors_cols, how="left")
     bad_entries = (base_df[impute_col] <= 0) | (base_df[impute_col].isna())
-    base_df.loc[bad_entries, impute_col] = replace_df.loc[bad_entries, f"median_{impute_col}"]
+    base_df.loc[bad_entries, impute_col] = replace_df.loc[bad_entries,
+                                                          f"median_{impute_col}"]
 
     # Set values lower than threshold to threshold
     if impute_thresh:
-        base_df.loc[base_df[impute_col] < impute_thresh, impute_col] = impute_thresh
+        base_df.loc[base_df[impute_col] <
+                    impute_thresh, impute_col] = impute_thresh
     return base_df
 
 
@@ -148,19 +153,25 @@ def process_data(
 def log_transform(df, cols_to_transform, log_type="log10"):
     log_func = {"log10": np.log10, "ln": np.log, "log2": np.log2}
     for col in cols_to_transform:
-        df[col] = log_func[log_type](df[col] + 1)
+        offset = 0.1
+        if np.nanmin(df[col]) < 0:
+            offset += abs(np.nanmin(df[col]))
+        df[col] = log_func[log_type](df[col] + offset)
     df = df.rename(
-        columns=dict(zip(cols_to_transform, [f"{log_type}_{col}" for col in cols_to_transform]))
+        columns=dict(
+            zip(cols_to_transform, [f"{log_type}_{col}" for col in cols_to_transform]))
     )
     return df
 
 
 def invert_log_transform(df, cols_to_invert, log_type="log10"):
-    log_func = {"ln": np.exp, "log10": lambda x: 10 ** x, "log2": lambda x: 2 ** x}
+    log_func = {"ln": np.exp, "log10": lambda x: 10 **
+                x, "log2": lambda x: 2 ** x}
     for col in cols_to_invert:
         df[col] = log_func[log_type](df[col]) - 1
     df = df.rename(
-        columns=dict(zip(cols_to_invert, [col.replace(log_type, "") for col in cols_to_invert]))
+        columns=dict(zip(cols_to_invert, [col.replace(
+            log_type, "") for col in cols_to_invert]))
     )
     return df
 
@@ -181,13 +192,16 @@ def reduce_dimensions(train_x_df, test_x_df, cols_to_reduce, prefix="temp", n_co
     train_x_pca = pca.transform(scaled_train_x_df)
     test_x_pca = pca.transform(scaled_test_x_df)
 
-    pca_cols = [f"{prefix}_pca{i+1}" for i in range(len(pca.explained_variance_ratio_))]
+    pca_cols = [
+        f"{prefix}_pca{i+1}" for i in range(len(pca.explained_variance_ratio_))]
 
     pca_train_x_df = pd.DataFrame(train_x_pca, columns=pca_cols)
     pca_test_x_df = pd.DataFrame(test_x_pca, columns=pca_cols)
 
-    train_x_df = pd.concat([train_x_df.drop(columns=cols_to_reduce), pca_train_x_df], axis=1)
-    test_x_df = pd.concat([test_x_df.drop(columns=cols_to_reduce), pca_test_x_df], axis=1)
+    train_x_df = pd.concat(
+        [train_x_df.drop(columns=cols_to_reduce), pca_train_x_df], axis=1)
+    test_x_df = pd.concat(
+        [test_x_df.drop(columns=cols_to_reduce), pca_test_x_df], axis=1)
 
     return train_x_df, test_x_df, pca_cols
 
@@ -211,7 +225,8 @@ def get_pca_n_components(x, var_thresh=0.75, var_diff_thresh=0.01, plot=True):
     pca = PCA().fit(x)
     cum_var_ratio = np.cumsum(pca.explained_variance_ratio_)
     stopping_criteria1 = cum_var_ratio > var_thresh
-    stopping_criteria2 = np.insert(np.diff(cum_var_ratio) > var_diff_thresh, 0, True)
+    stopping_criteria2 = np.insert(
+        np.diff(cum_var_ratio) > var_diff_thresh, 0, True)
     if (stopping_criteria1 & stopping_criteria2).any():
         mask = stopping_criteria1 & stopping_criteria2
     elif stopping_criteria1.any():
