@@ -1,6 +1,10 @@
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import backend as K
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTENC
@@ -24,8 +28,10 @@ def run_leave_year_out(
         "sklearn": run_sklearn_model,
         "catboost": run_catboost_model,
         "lightgbm": run_lgb_model,
+        "dnn": run_dnn_model,
     }
-    assert model_type in run_model_dict.keys(), f"{model_type} not in {run_model_dict.keys()}"
+    assert model_type in run_model_dict.keys(
+    ), f"{model_type} not in {run_model_dict.keys()}"
     all_loy_model_result = []
     all_year = model_df["year_factor"].unique()
     prediction_result_train_dict = {}
@@ -63,7 +69,8 @@ def run_leave_year_out(
             left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df
         )
         train_predict, test_predict, fitted_model = run_model_dict[model_type](
-            ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df
+            ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df,
+            validation_data=(left_out_test_x_df.values, left_out_test_y_df.values),
         )
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
         test_rmse = calculate_rmse(left_out_test_y_df, test_predict)
@@ -78,7 +85,8 @@ def run_leave_year_out(
         all_loy_model_result.append(one_year_result_df)
         prediction_result_train_dict[one_year] = train_predict
         prediction_result_test_dict[one_year] = test_predict
-    all_loy_model_result_df = pd.concat(all_loy_model_result).reset_index(drop=True)
+    all_loy_model_result_df = pd.concat(
+        all_loy_model_result).reset_index(drop=True)
     if if_output_prediction_results:
         return all_loy_model_result_df, prediction_result_train_dict, prediction_result_test_dict
     else:
@@ -135,8 +143,10 @@ def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot, fu
                 columns=one_hot_encoded_column_name,
                 index=test_x_df.index,
             )
-            train_x_df = pd.concat([train_x_df, train_one_hot_encoded], axis="columns")
-            test_x_df = pd.concat([test_x_df, test_one_hot_encoded], axis="columns")
+            train_x_df = pd.concat(
+                [train_x_df, train_one_hot_encoded], axis="columns")
+            test_x_df = pd.concat(
+                [test_x_df, test_one_hot_encoded], axis="columns")
         train_x_df = train_x_df.drop(columns=categorical_columns_to_dummy)
         test_x_df = test_x_df.drop(columns=categorical_columns_to_dummy)
     if if_scale_data:
@@ -156,8 +166,10 @@ def scale_data(train_x, test_x):
     scaler = scaler.fit(train_x)
     scaled_train_x = scaler.transform(train_x)
     scaled_test_x = scaler.transform(test_x)
-    scaled_train_x = pd.DataFrame(scaled_train_x, columns=train_x.columns, index=train_x.index)
-    scaled_test_x = pd.DataFrame(scaled_test_x, columns=test_x.columns, index=test_x.index)
+    scaled_train_x = pd.DataFrame(
+        scaled_train_x, columns=train_x.columns, index=train_x.index)
+    scaled_test_x = pd.DataFrame(
+        scaled_test_x, columns=test_x.columns, index=test_x.index)
     return scaled_train_x, scaled_test_x
 
 
@@ -166,7 +178,7 @@ def get_one_hot_encoder(train_df):
     return enc.fit(train_df)
 
 
-def run_sklearn_model(sklearn_model, train_x_df, train_y_df, test_x_df):
+def run_sklearn_model(sklearn_model, train_x_df, train_y_df, test_x_df, validation_data=None):
     fitted_model = fit_sklearn_model(sklearn_model, train_x_df, train_y_df)
     train_predict = run_sklearn_predict(fitted_model, train_x_df)
     test_predict = run_sklearn_predict(fitted_model, test_x_df)
@@ -186,7 +198,7 @@ def fit_lgb_model(model, train_x, train_y):
     return model
 
 
-def run_lgb_model(lgb_model, train_x_df, train_y_df, test_x_df):
+def run_lgb_model(lgb_model, train_x_df, train_y_df, test_x_df, validation_data=None):
     fitted_model = fit_lgb_model(lgb_model, train_x_df, train_y_df)
     train_predict = run_sklearn_predict(fitted_model, train_x_df)
     test_predict = run_sklearn_predict(fitted_model, test_x_df)
@@ -207,12 +219,54 @@ def calculate_rmse(true_y, predict_y):
     return mean_squared_error(true_y, predict_y, squared=False)
 
 
-def run_catboost_model(model, train_x_df, train_y_df, test_x_df):
+def run_catboost_model(model, train_x_df, train_y_df, test_x_df, validation_data=None):
     cat_columns = train_x_df.select_dtypes(["O"]).columns.tolist()
     model.fit(train_x_df, y=train_y_df, cat_features=cat_columns)
     train_predict = model.predict(train_x_df)
     test_predict = model.predict(test_x_df)
     return train_predict, test_predict, model
+
+
+def run_dnn_model(model, train_x_df, train_y_df, test_x_df, validation_data=None):
+    if model is None:
+        model = build_and_compile_dnn_model(train_x_df)
+    validation_split = 0 if validation_data else 0.2
+    # Stop training if loss doesn't improve from min value over 10 iterations
+    callback = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss', mode='min', patience=10, restore_best_weights=True)
+    # Fit nn - note fitting will essentially pick up from last state
+
+    model.fit(train_x_df, train_y_df, verbose=1, validation_data=validation_data,
+              validation_split=validation_split,
+              epochs=100, callbacks=[callback])
+    train_predict = model.predict(train_x_df)
+    test_predict = model.predict(test_x_df)
+    return train_predict, test_predict, model
+
+
+def build_and_compile_dnn_model(input_features):
+    normalizer = tf.keras.layers.Normalization(axis=-1)
+    normalizer.adapt(np.array(input_features))
+
+    model = keras.Sequential([
+        normalizer,
+        layers.Dense(64, activation='elu'),
+        layers.Dense(64, activation='elu'),
+        layers.Dense(1)
+    ])
+
+    model.compile(loss=tf_rmse,  # 'mean_absolute_error',
+                  optimizer=tf.keras.optimizers.Adam(0.001),
+                  metrics=[tf.keras.metrics.RootMeanSquaredError()])
+    return model
+
+
+def tf_rmse(y_true, y_pred):
+    return K.sqrt(K.mean(K.square(y_true - y_pred)))
+
+
+def tf_rmsle(y_true, y_pred):
+    return K.sqrt(K.mean(K.square(K.log(1.+y_true) - K.log(1+y_pred))))
 
 
 def upsampling_by_column(train_df, resample_by_col, resample_type="random"):
@@ -233,7 +287,8 @@ def upsampling_by_column(train_df, resample_by_col, resample_type="random"):
             for c in non_numeric_columns
             if c in train_x_to_resample
         ]
-        sm = SMOTENC(random_state=42, categorical_features=categorical_column_index)
+        sm = SMOTENC(random_state=42,
+                     categorical_features=categorical_column_index)
         train_x_resampled, train_y_resampled = sm.fit_resample(
             train_x_to_resample, train_y_to_resample
         )
@@ -246,7 +301,8 @@ def downsampling_by_column(train_df, resample_by_col, resample_type="random"):
     train_x_to_resample = train_df.drop(columns=resample_by_col)
     train_y_to_resample = train_df[resample_by_col]
     if resample_type == "random":
-        undersampler = RandomUnderSampler(random_state=42, sampling_strategy="majority")
+        undersampler = RandomUnderSampler(
+            random_state=42, sampling_strategy="majority")
         train_x_resampled, train_y_resampled = undersampler.fit_resample(
             train_x_to_resample, train_y_to_resample
         )
@@ -296,8 +352,10 @@ def process_loy_train_test_prediction(
     all_loy_train_predict = []
     all_loy_test_predict = []
     for one_year in all_year_factor:
-        left_year_train_df = model_df.query(f"year_factor != {one_year}")[["id"]]
-        left_year_test_df = model_df.query(f"year_factor == {one_year}")[["id"]]
+        left_year_train_df = model_df.query(
+            f"year_factor != {one_year}")[["id"]]
+        left_year_test_df = model_df.query(
+            f"year_factor == {one_year}")[["id"]]
         one_left_year_train_df = loy_prediction_result_train_dict[one_year]
         one_left_year_test_df = loy_prediction_result_test_dict[one_year]
         left_year_train_df["train_prediction"] = one_left_year_train_df
