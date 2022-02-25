@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 from .model_utils import scale_data
-from .data_process_utils import backfill_energy_star_rating, backfill_wind_direction
+from .data_process_utils import backfill_energy_star_rating, backfill_wind_direction, parse_facility_type
 
 
 def clean_impute_data(
@@ -101,11 +101,19 @@ def process_data(
     cols_to_log_transform,
     n_pca_components,
     backfill_dict,
+    categorical_feature_to_reduce=None
 ):
     # Standardize colnames
     train_df = standardize_colnames(train_df)
     test_df = standardize_colnames(test_df)
 
+    # Parse categorical feature to reduce unique categories
+    if categorical_feature_to_reduce:
+        assert categorical_feature_to_reduce in train_df.select_dtypes(["O"]).columns, \
+        f"categorical_feature_to_reduce={categorical_feature_to_reduce} not in input df"
+        train_df = parse_facility_type(train_df, facility_type_colname=categorical_feature_to_reduce)
+        test_df = parse_facility_type(test_df, facility_type_colname=categorical_feature_to_reduce)
+        
     # Make log transformations
     if cols_to_log_transform:
         train_df = log_transform(train_df, cols_to_log_transform)
