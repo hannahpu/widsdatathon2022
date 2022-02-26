@@ -29,8 +29,9 @@ def run_bootstrap_stratified_validation(
     n_bootstraps=5,
 ):
     # Sample the train/validation dataset so it resembles true test distribution
-    bootstrap_strat_df = {}
+    bootstrap_strat_df = pd.DataFrame()
     for i in range(n_bootstraps):
+        print(f"Starting bootstrap {i}")
         sub_model_df = heuristic_sample_to_true_test(
             model_df, col_to_resample='facility_type_parsed')
         stratified_model_result_df = run_stratified_validation(sub_model_df, ml_model, features_columns,
@@ -39,6 +40,7 @@ def run_bootstrap_stratified_validation(
                                                                if_output_prediction_results=if_output_prediction_results,
                                                                resample_param_dict=resample_param_dict,
                                                                imputer=imputer)
+        print(type(stratified_model_result_df), stratified_model_result_df)
         bootstrap_strat_df = pd.concat(
             [bootstrap_strat_df, stratified_model_result_df.assign(bootstrap=i)])
     return bootstrap_strat_df
@@ -88,6 +90,7 @@ def run_stratified_validation(
 
     # Each train/test split is ~4:1 equal ratio of stratify_y
     for strat, (train_inds, test_inds) in enumerate(skf.split(X.values, stratify_y)):
+        print(f"Modeling strat {strat}")
         # Prep/preprocess
         train_df = model_df.iloc[train_inds]
         test_df = model_df.iloc[test_inds]
