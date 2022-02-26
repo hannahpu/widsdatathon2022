@@ -1,6 +1,8 @@
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import StratifiedKFold, KFold
+
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -10,6 +12,120 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTENC
 import pandas as pd
 import numpy as np
+
+
+def run_bootstrap_stratified_validation(
+    model_df,
+    ml_model,
+    features_columns,
+    if_scale_data,
+    if_one_hot,
+    model_type="sklearn",
+    stratify_col='facility_type_parsed',
+    response_col="site_eui",
+    if_output_prediction_results=False,
+    resample_param_dict={},
+    imputer=None,
+    n_bootstraps=5,
+):
+    # Sample the train/validation dataset so it resembles true test distribution
+    bootstrap_strat_df = {}
+    for i in range(n_bootstraps):
+        sub_model_df = heuristic_sample_to_true_test(
+            model_df, col_to_resample='facility_type_parsed')
+        stratified_model_result_df = run_stratified_validation(sub_model_df, ml_model, features_columns,
+                                                               if_scale_data, if_one_hot, model_type=model_type,
+                                                               stratify_col=stratify_col, response_col=response_col,
+                                                               if_output_prediction_results=if_output_prediction_results,
+                                                               resample_param_dict=resample_param_dict,
+                                                               imputer=imputer)
+        bootstrap_strat_df = pd.concat(
+            [bootstrap_strat_df, stratified_model_result_df.assign(bootstrap=i)])
+    return bootstrap_strat_df
+
+
+def run_stratified_validation(
+    model_df,
+    ml_model,
+    features_columns,
+    if_scale_data,
+    if_one_hot,
+    model_type="sklearn",
+    stratify_col='facility_type_parsed',
+    response_col="site_eui",
+    if_output_prediction_results=False,
+    resample_param_dict={},
+    imputer=None,
+):
+    # Define which function to run
+    run_model_dict = {
+        "sklearn": run_sklearn_model,
+        "catboost": run_catboost_model,
+        "lightgbm": run_lgb_model,
+        "dnn": run_dnn_model,
+    }
+    assert model_type in run_model_dict.keys(
+    ), f"{model_type} not in {run_model_dict.keys()}"
+
+    all_stratified_model_result = []
+    prediction_result_train_dict = {}
+    prediction_result_test_dict = {}
+    print(f"Running {model_type}")
+
+    # Instantiate stratified kfold model
+    skf = StratifiedKFold()
+    # Note stratify_y is not the target for regression, but rather the target
+    # for stratifying train/test split for validation (eg facility type)
+    X = model_df.drop(columns=stratify_col)
+    stratify_y = model_df[stratify_col].map(
+        dict(
+            zip(
+                np.sort(model_df[stratify_col].unique()),
+                np.arange(model_df[stratify_col].nunique()),
+            )
+        )
+    ).values
+
+    # Each train/test split is ~4:1 equal ratio of stratify_y
+    for strat, (train_inds, test_inds) in enumerate(skf.split(X.values, stratify_y)):
+        # Prep/preprocess
+        train_df = model_df.iloc[train_inds]
+        test_df = model_df.iloc[test_inds]
+        train_x_df, train_y_df = split_model_feature_response(
+            train_df, features_columns, response_col=response_col
+        )
+        test_x_df, test_y_df = split_model_feature_response(
+            test_df, features_columns, response_col=response_col
+        )
+        train_x_df, test_x_df = process_train_test_data(
+            train_x_df, test_x_df, if_scale_data, if_one_hot, model_df, imputer=imputer
+        )
+        # Run regression model
+        train_predict, test_predict, fitted_model = run_model_dict[model_type](
+            ml_model, train_x_df, train_y_df, test_x_df,
+            validation_data=(test_x_df.values,
+                             test_y_df.values),
+        )
+        # Calculate training & validation metrics
+        train_rmse = calculate_rmse(train_y_df, train_predict)
+        test_rmse = calculate_rmse(test_y_df, test_predict)
+        stratified_result_df = pd.DataFrame(
+            {
+                "stratification": strat,
+                "train_rmse": train_rmse,
+                "test_rmse": test_rmse,
+            },
+            index=[0],
+        )
+        all_stratified_model_result.append(stratified_result_df)
+        prediction_result_train_dict[strat] = train_predict
+        prediction_result_test_dict[strat] = test_predict
+    all_stratified_model_result_df = pd.concat(
+        all_stratified_model_result).reset_index(drop=True)
+    if if_output_prediction_results:
+        return all_stratified_model_result_df, prediction_result_train_dict, prediction_result_test_dict
+    else:
+        return all_stratified_model_result_df
 
 
 def run_leave_year_out(
@@ -22,6 +138,7 @@ def run_leave_year_out(
     response_col="site_eui",
     if_output_prediction_results=False,
     resample_param_dict={},
+    imputer=None,
 ):
     # Define which function to run
     run_model_dict = {
@@ -61,8 +178,10 @@ def run_leave_year_out(
                 )
             elif up_or_downsample == "custom_upsample":
                 print("getting custom upsample")
-                df_to_get_weights = model_df.query(f"year_factor != {one_year}")
-                train_after_resampled_df = custom_weighted_upsample(train_for_resample_df, df_to_get_weights, resample_by_col)
+                df_to_get_weights = model_df.query(
+                    f"year_factor != {one_year}")
+                train_after_resampled_df = custom_weighted_upsample(
+                    train_for_resample_df, df_to_get_weights, resample_by_col)
             left_out_train_x_df, left_out_train_y_df = split_model_feature_response(
                 train_after_resampled_df,
                 features_columns,
@@ -70,11 +189,12 @@ def run_leave_year_out(
                 response_col=response_col,
             )
         left_out_train_x_df, left_out_test_x_df = process_train_test_data(
-            left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df
+            left_out_train_x_df, left_out_test_x_df, if_scale_data, if_one_hot, model_df, imputer=imputer
         )
         train_predict, test_predict, fitted_model = run_model_dict[model_type](
             ml_model, left_out_train_x_df, left_out_train_y_df, left_out_test_x_df,
-            validation_data=(left_out_test_x_df.values, left_out_test_y_df.values),
+            validation_data=(left_out_test_x_df.values,
+                             left_out_test_y_df.values),
         )
         train_rmse = calculate_rmse(left_out_train_y_df, train_predict)
         test_rmse = calculate_rmse(left_out_test_y_df, test_predict)
@@ -125,37 +245,79 @@ def split_model_feature_response(
         return model_x_df
 
 
-def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot, full_data_df):
+def one_hot_encode_data(train_x_df, test_x_df, full_data_df):
+    categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
+    # print(f"Columns to be dummied: {categorical_columns_to_dummy}")
+    for col in categorical_columns_to_dummy:
+        encoder = get_one_hot_encoder(full_data_df[[col]])
+        one_hot_encoded_column_name = [
+            f"{col}_{ind}" for ind in range(full_data_df[col].nunique())
+        ]
+        train_one_hot_encoded = encoder.transform(train_x_df[[col]])
+        train_one_hot_encoded = pd.DataFrame(
+            train_one_hot_encoded,
+            columns=one_hot_encoded_column_name,
+            index=train_x_df.index,
+        )
+        test_one_hot_encoded = encoder.transform(test_x_df[[col]])
+        test_one_hot_encoded = pd.DataFrame(
+            test_one_hot_encoded,
+            columns=one_hot_encoded_column_name,
+            index=test_x_df.index,
+        )
+        train_x_df = pd.concat(
+            [train_x_df, train_one_hot_encoded], axis="columns")
+        test_x_df = pd.concat(
+            [test_x_df, test_one_hot_encoded], axis="columns")
+    train_x_df = train_x_df.drop(columns=categorical_columns_to_dummy)
+    test_x_df = test_x_df.drop(columns=categorical_columns_to_dummy)
+    return train_x_df, test_x_df
+
+
+def process_train_test_data(train_x_df, test_x_df, if_scale_data, if_one_hot, full_data_df, imputer=None):
     if if_one_hot:
-        categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
-        # print(f"Columns to be dummied: {categorical_columns_to_dummy}")
-        for col in categorical_columns_to_dummy:
-            # encoder = get_one_hot_encoder(train_x_df[[col]])
-            encoder = get_one_hot_encoder(full_data_df[[col]])
-            one_hot_encoded_column_name = [
-                f"{col}_{ind}" for ind in range(full_data_df[col].nunique())
-            ]
-            train_one_hot_encoded = encoder.transform(train_x_df[[col]])
-            train_one_hot_encoded = pd.DataFrame(
-                train_one_hot_encoded,
-                columns=one_hot_encoded_column_name,
-                index=train_x_df.index,
-            )
-            test_one_hot_encoded = encoder.transform(test_x_df[[col]])
-            test_one_hot_encoded = pd.DataFrame(
-                test_one_hot_encoded,
-                columns=one_hot_encoded_column_name,
-                index=test_x_df.index,
-            )
-            train_x_df = pd.concat(
-                [train_x_df, train_one_hot_encoded], axis="columns")
-            test_x_df = pd.concat(
-                [test_x_df, test_one_hot_encoded], axis="columns")
-        train_x_df = train_x_df.drop(columns=categorical_columns_to_dummy)
-        test_x_df = test_x_df.drop(columns=categorical_columns_to_dummy)
+        train_x_df, test_x_df = one_hot_encode_data(
+            train_x_df, test_x_df, full_data_df)
     if if_scale_data:
         train_x_df, test_x_df = scale_data(train_x_df, test_x_df)
+    if imputer:
+        train_x_df, test_x_df = run_imputer(
+            imputer, train_x_df, test_x_df, full_data_df)
     return train_x_df, test_x_df
+
+
+def run_imputer(imputer, train_x_df, test_x_df, full_data_df):
+    # Pre-process categorical features -> one hot encoding
+    categorical_columns_to_dummy = output_non_numeric_columns(train_x_df)
+    if categorical_columns_to_dummy:
+        train_x_df, test_x_df = one_hot_encode_data(
+            train_x_df.copy(), test_x_df.copy(), full_data_df)
+    # Run imputer
+    train_x_impute_df = imputer.fit_transform(train_x_df)
+    test_x_impute_df = imputer.transform(test_x_df)
+
+    train_x_impute_df = pd.DataFrame(
+        train_x_impute_df, columns=train_x_df.columns
+    )
+    test_x_impute_df = pd.DataFrame(
+        test_x_impute_df, columns=test_x_df.columns
+    )
+    # Reverse one-hot encoding -> categorical features
+    for col in categorical_columns_to_dummy:
+        one_hot_encoded_column_name = [
+            f"{col}_{ind}" for ind in range(full_data_df[col].nunique())
+        ]
+        one_hot_to_cat_dict = dict(zip(one_hot_encoded_column_name,
+                                       np.sort(full_data_df[col].unique())))
+        train_x_impute_df[col] = train_x_impute_df[one_hot_encoded_column_name].idxmax(
+            1).map(one_hot_to_cat_dict)
+        test_x_impute_df[col] = test_x_impute_df[one_hot_encoded_column_name].idxmax(
+            1).map(one_hot_to_cat_dict)
+        train_x_impute_df = train_x_impute_df.drop(
+            columns=one_hot_encoded_column_name)
+        test_x_impute_df = test_x_impute_df.drop(
+            columns=one_hot_encoded_column_name)
+    return train_x_impute_df, test_x_impute_df
 
 
 def output_non_numeric_columns(model_df):
@@ -305,16 +467,19 @@ def custom_weighted_upsample(df_to_resample, df_to_get_weights, resample_by_col)
     # get the levels that needs upsampled and the needed sample number
     column_level_counts = df_to_resample[resample_by_col].value_counts()
     final_sampled_number = column_level_counts.max()
-    column_level_to_resample = column_level_counts[column_level_counts != final_sampled_number]
+    column_level_to_resample = column_level_counts[column_level_counts !=
+                                                   final_sampled_number]
     column_level_number_to_resample = final_sampled_number - column_level_to_resample
     # upsample per level
     all_resampled_list = []
     for level, number in column_level_number_to_resample.iteritems():
-        level_to_resample_from_df = df_to_resample.query(f"{resample_by_col} == '{level}'")
+        level_to_resample_from_df = df_to_resample.query(
+            f"{resample_by_col} == '{level}'")
         level_resample_weights = df_to_get_weights.query(f"{resample_by_col} == '{level}'")[
             "resample_weights"
         ].values
-        assert level_to_resample_from_df.shape[0] == len(level_resample_weights)
+        assert level_to_resample_from_df.shape[0] == len(
+            level_resample_weights)
         resampled_data = level_to_resample_from_df.sample(
             n=number, replace=True, weights=level_resample_weights, random_state=None, axis=0
         )
@@ -371,6 +536,37 @@ def run_model_predict_unknown_test_by_column(
         )
     all_test_prediction_result = pd.concat(test_prediction_result)
     return all_test_prediction_result
+
+
+def heuristic_sample_to_true_test(train_df, col_to_resample='facility_type_parsed'):
+    resample_cols_reduce_dict = {"Multifamily": 0.7, "Office": 0.25}
+    sample_reduce_inds_dict = {}
+    inds_to_drop = []
+    for ftp, frac in resample_cols_reduce_dict.items():
+        itd = (
+            train_df.loc[train_df[col_to_resample] == ftp]
+            .sample(frac=frac).index
+        )
+        sample_reduce_inds_dict[ftp] = itd
+        inds_to_drop += list(itd)
+
+    resample_cols_augment_dict = {"Unit_Building": 1}
+    sample_augment_inds_dict = {}
+    inds_to_add = []
+    for ftp, frac in resample_cols_augment_dict.items():
+        itd = (
+            train_df.loc[train_df[col_to_resample] == ftp]
+            .sample(frac=frac).index
+        )
+        sample_augment_inds_dict[ftp] = itd
+        inds_to_add += list(itd)
+    new_train_df = pd.concat(
+        [
+            train_df.drop(index=inds_to_drop),
+            train_df.iloc[inds_to_add],
+        ]
+    )
+    return new_train_df
 
 
 def process_loy_train_test_prediction(
